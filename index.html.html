@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="th" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <!-- iPad / Mobile Viewport Lock & Gesture Scale Handling -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Interactive Free Scatter Number Board 1-100 (iPad & Web Ready)</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Prompt', 'Fredoka', 'Chakra Petch', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Google Fonts for Thai & English -->
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,400;0,600;0,700;1,500&family=Prompt:ital,wght@0,300;0,400;0,600;0,700;1,400&family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* Prevent browser pull-to-refresh & pinch zoom quirks on iPad / iOS Safari */
+        html, body {
+            touch-action: manipulation;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        /* Borderless Scattered Items with touch feedback */
+        .scatter-item {
+            position: absolute;
+            cursor: pointer;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            transition: transform 0.15s ease-out, filter 0.15s ease-out, opacity 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 12px; /* Enlarged hit target for tablet finger taps */
+            border-radius: 12px;
+            white-space: nowrap;
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            will-change: transform;
+        }
+
+        .scatter-item:active {
+            transform: scale(1.15) !important;
+            filter: drop-shadow(0 8px 16px rgba(79, 70, 229, 0.4));
+        }
+
+        /* Red X Overlay on Tap/Click */
+        .crossed-out {
+            opacity: 0.35;
+        }
+
+        .crossed-out::after {
+            content: '❌';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(1);
+            font-size: 2em;
+            line-height: 1;
+            pointer-events: none;
+            z-index: 1000;
+            filter: drop-shadow(0 3px 6px rgba(220, 38, 38, 0.6));
+            animation: popCross 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        @keyframes popCross {
+            0% { transform: translate(-50%, -50%) scale(0) rotate(-15deg); opacity: 0; }
+            100% { transform: translate(-50%, -50%) scale(1.1) rotate(0deg); opacity: 1; }
+        }
+
+        /* Custom Checkbox Toggle Label Styling */
+        .chip-checkbox:checked + .chip-label {
+            background-color: #4f46e5;
+            color: #ffffff;
+            border-color: #4f46e5;
+            box-shadow: 0 4px 12px -2px rgba(79, 70, 229, 0.4);
+        }
+
+        /* Custom Modal Backdrop Blur */
+        .modal-backdrop {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(6px);
+        }
+
+        /* Scrollbar aesthetics */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #94a3b8;
+            border-radius: 9999px;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col h-full font-sans antialiased transition-colors duration-200">
+
+    <!-- Top Navigation & Control Toolbar -->
+    <header id="main-header" class="relative z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm transition-all duration-300">
+        <div class="max-w-7xl mx-auto px-4 py-2.5">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                
+                <!-- Branding / Title -->
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold text-lg shadow-md shadow-indigo-200 dark:shadow-none">
+                        100
+                    </div>
+                    <div>
+                        <h1 class="text-base sm:text-lg font-bold leading-tight">
+                            กระดานตัวเลขกระจายอิสระ (iPad & Web Board)
+                        </h1>
+                        <p class="text-xs text-slate-500 dark:text-slate-400">ตัวเลข 1-100 แบบกระจาย ไร้กรอบ รองรับ iPad / แท็บเล็ต และ ฝังลงเว็บ</p>
+                    </div>
+                </div>
+
+                <!-- Stats, Mode & Export Controls -->
+                <div class="flex flex-wrap items-center gap-2">
+                    <!-- Crossed Counter -->
+                    <div class="bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 px-3 py-1.5 rounded-xl text-xs font-semibold text-indigo-700 dark:text-indigo-300 flex items-center gap-2">
+                        <span>กากบาท:</span>
+                        <span id="cross-counter" class="bg-indigo-600 text-white px-2 py-0.5 rounded-md font-bold">0 / 100</span>
+                    </div>
+
+                    <!-- Reset Button -->
+                    <button id="reset-crosses-btn" title="ล้างกากบาททั้งหมด" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-medium rounded-xl transition flex items-center gap-1">
+                        <span>🧹</span> <span class="hidden sm:inline">ล้างกากบาท</span>
+                    </button>
+
+                    <!-- Dark / Light Theme Toggle -->
+                    <button id="theme-toggle-btn" title="เปลี่ยนธีม สว่าง/มืด" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-medium rounded-xl transition flex items-center gap-1">
+                        <span id="theme-icon">🌙</span>
+                    </button>
+
+                    <!-- iPad App / Fullscreen Mode -->
+                    <button id="fullscreen-btn" title="โหมด iPad เต็มจอ" class="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-medium rounded-xl transition flex items-center gap-1">
+                        <span>📱</span> <span class="hidden md:inline">โหมดเต็มจอ / iPad View</span>
+                    </button>
+
+                    <!-- Export Options Dropdown Button -->
+                    <button id="export-open-btn" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition shadow-md shadow-indigo-200 dark:shadow-none flex items-center gap-1.5">
+                        <span>📥</span> Export / นำไปใช้
+                    </button>
+
+                    <!-- Toggle Condition Panel -->
+                    <button id="toggle-panel-btn" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-medium rounded-xl transition flex items-center gap-1">
+                        <span>⚙️</span> <span id="panel-toggle-text" class="hidden sm:inline">ตั้งค่า Condition</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Condition Settings Drawer -->
+            <div id="control-panel" class="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs transition-all duration-300">
+                <!-- Group 1: Number Format -->
+                <div class="flex flex-col gap-2">
+                    <span class="font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1">
+                        <span>🌐</span> 1. ภาษา / ตัวเลข
+                    </span>
+                    <div class="flex flex-wrap gap-1.5">
+                        <label class="cursor-pointer">
+                            <input type="checkbox" id="fmt-arabic" class="chip-checkbox hidden" checked>
+                            <span class="chip-label inline-block px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 transition">เลขอารบิก (1, 2)</span>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="checkbox" id="fmt-thai-digit" class="chip-checkbox hidden" checked>
+                            <span class="chip-label inline-block px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 transition">เลขไทย (๑, ๒)</span>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="checkbox" id="fmt-thai-word" class="chip-checkbox hidden" checked>
+                            <span class="chip-label inline-block px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 transition">หนังสือไทย (หนึ่ง)</span>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="checkbox" id="fmt-en-word" class="chip-checkbox hidden" checked>
+                            <span class="chip-label inline-block px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 transition">หนังสืออังกฤษ (ONE)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Group 2: Orientation & Transformations -->
+                <div class="flex flex-col gap-2">
+                    <span class="font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1">
+                        <span>🔄</span> 2. ทิศทาง / การหมุน
+                    </span>
+                    <div class="flex flex-wrap gap-1.5">
+                        <label class="cursor-pointer">
+                            <input type="checkbox" id="ori-normal" class="chip-checkbox hidden" checked>
+                            <span class="chip-label inline-block px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 transition">แนวนอนปกติ</span>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="checkbox" id="ori-upside-down" class="chip-checkbox hidden" checked>
+                            <span class="chip-label inline-block px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 transition">กลับหัว (180°)</span>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="checkbox" id="ori-mirror" class="chip-checkbox hidden" checked>
+                            <span class="chip-label inline-block px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 transition">กลับหาง / กระจก</span>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="checkbox" id="ori-vertical" class="chip-checkbox hidden" checked>
+                            <span class="chip-label inline-block px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 transition">แนวตั้ง</span>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="checkbox" id="ori-tilt" class="chip-checkbox hidden" checked>
+                            <span class="chip-label inline-block px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 transition">สุ่มมุมเอียง</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Group 3: Casing & Regenerate Action -->
+                <div class="flex flex-col justify-between gap-2">
+                    <div>
+                        <span class="font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1 mb-1.5">
+                            <span>🔤</span> 3. ขนาดตัวพิมพ์ (ภาษาอังกฤษ)
+                        </span>
+                        <div class="flex flex-wrap gap-1.5">
+                            <label class="cursor-pointer">
+                                <input type="checkbox" id="case-upper" class="chip-checkbox hidden" checked>
+                                <span class="chip-label inline-block px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 transition">UPPERCASE</span>
+                            </label>
+                            <label class="cursor-pointer">
+                                <input type="checkbox" id="case-lower" class="chip-checkbox hidden" checked>
+                                <span class="chip-label inline-block px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 transition">lowercase</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <button id="generate-board-btn" class="w-full py-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-semibold rounded-xl shadow-md transition flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        สร้างกระดานใหม่ (Generate Board)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Interactive Board Surface -->
+    <main class="flex-grow relative w-full overflow-hidden bg-slate-50 dark:bg-slate-950" id="canvas-container">
+        <!-- Ambient Subtle Dot Matrix Grid (Non-framing) -->
+        <div class="absolute inset-0 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] dark:bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:24px_24px] opacity-50 pointer-events-none"></div>
+
+        <!-- Floating Exit Fullscreen Button (Appears in Presentation Mode) -->
+        <button id="exit-fullscreen-btn" class="hidden fixed top-4 right-4 z-50 px-3.5 py-2 bg-slate-900/80 hover:bg-slate-900 text-white text-xs font-semibold rounded-2xl backdrop-blur-md shadow-lg border border-slate-700/50 transition flex items-center gap-2">
+            <span>❌</span> ออกจากโหมด iPad View
+        </button>
+
+        <!-- Dynamic Scattered Floating Canvas Surface -->
+        <div id="scatter-area" class="relative w-full h-full min-h-[100vh]"></div>
+    </main>
+
+    <!-- Export Modal Dialog -->
+    <div id="export-modal" class="hidden fixed inset-0 z-50 modal-backdrop flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-lg rounded-3xl shadow-2xl p-6 relative transition-all transform">
+            <button id="close-modal-btn" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-lg font-bold p-1">
+                ✕
+            </button>
+            
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 rounded-2xl bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-xl font-bold">
+                    🚀
+                </div>
+                <div>
+                    <h2 class="text-base font-bold text-slate-900 dark:text-white">Export & นำเกมไปใช้งาน</h2>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">เลือกวิธีส่งออกไปใช้บน iPad, เว็บไซต์ หรือระบบ LMS</p>
+                </div>
+            </div>
+
+            <div class="space-y-4">
+                <!-- Download Standalone HTML -->
+                <div class="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200/80 dark:border-slate-700/60">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="font-bold text-xs text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                            <span>📄</span> ดาวน์โหลดไฟล์เว็บส่วนตัว (.html)
+                        </span>
+                        <span class="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-semibold px-2 py-0.5 rounded-full">Offline Supported</span>
+                    </div>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mb-3">ดาวน์โหลดไฟล์ HTML ตัวเต็ม สามารถเปิดเล่นบน iPad, Safari, Chrome หรือคอมพิวเตอร์ได้ทันทีโดยไม่ต้องต่ออินเทอร์เน็ต</p>
+                    <button id="download-html-btn" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl transition flex items-center justify-center gap-2">
+                        <span>💾</span> ดาวน์โหลดไฟล์ .html
+                    </button>
+                </div>
+
+                <!-- Copy Embed Iframe Code -->
+                <div class="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200/80 dark:border-slate-700/60">
+                    <span class="font-bold text-xs text-slate-800 dark:text-slate-200 flex items-center gap-1.5 mb-2">
+                        <span>🧩</span> โค้ดฝังเว็บไซต์ (iFrame Embed Code)
+                    </span>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mb-2">คัดลอกโค้ดนี้นำไปวางใน WordPress, Notion, Webflow, Canvas หรือระบบเว็บไซต์ของคุณได้เลย</p>
+                    <div class="relative">
+                        <textarea id="iframe-code" readonly class="w-full h-20 p-2.5 text-[11px] font-mono bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-600 dark:text-slate-300 focus:outline-none resize-none"></textarea>
+                        <button id="copy-iframe-btn" class="absolute bottom-2 right-2 px-2.5 py-1 bg-slate-800 text-white hover:bg-slate-700 text-[11px] font-medium rounded-lg transition">
+                            คัดลอกโค้ด
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Language & Conversion Helpers
+        const thaiDigits = ["๐", "๑", "๒", "๓", "๔", "๕", "๖", "๗", "๘", "๙"];
+        function toThaiDigit(num) {
+            return num.toString().split('').map(d => thaiDigits[d]).join('');
+        }
+
+        const thaiUnits = ["", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า"];
+        function toThaiWord(n) {
+            if (n === 100) return "หนึ่งร้อย";
+            if (n === 0) return "ศูนย์";
+            let t = Math.floor(n / 10);
+            let u = n % 10;
+            let str = "";
+            if (t > 0) {
+                if (t === 1) str += "สิบ";
+                else if (t === 2) str += "ยี่สิบ";
+                else str += thaiUnits[t] + "สิบ";
+            }
+            if (u > 0) {
+                if (t > 0 && u === 1) str += "เอ็ด";
+                else str += thaiUnits[u];
+            }
+            return str;
+        }
+
+        const enUnits = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
+        const enTens = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+        function toEnglishWord(n) {
+            if (n === 100) return "one hundred";
+            if (n < 20) return enUnits[n];
+            let t = Math.floor(n / 10);
+            let u = n % 10;
+            return enTens[t] + (u > 0 ? "-" + enUnits[u] : "");
+        }
+
+        // Color palettes optimized for both light and dark mode visibility
+        const textColorsLight = [
+            '#4338ca', '#6d28d9', '#0369a1', '#047857', '#b45309',
+            '#be123c', '#0f766e', '#7c3aed', '#c026d3', '#2563eb', '#dc2626'
+        ];
+        const textColorsDark = [
+            '#818cf8', '#a78bfa', '#38bdf8', '#34d399', '#fbbf24',
+            '#fb7185', '#2dd4bf', '#c084fc', '#e879f9', '#60a5fa', '#f87171'
+        ];
+
+        const fontSizes = ['1rem', '1.2rem', '1.4rem', '1.6.rem', '1.8rem', '2.1rem'];
+        const fontWeights = ['400', '600', '700'];
+
+        let boardData = [];
+        let isDarkMode = false;
+
+        function updateCounter() {
+            const count = boardData.filter(item => item.isCrossed).length;
+            document.getElementById('cross-counter').textContent = `${count} / 100`;
+        }
+
+        function generateScatterData() {
+            const activeFormats = [];
+            if (document.getElementById('fmt-arabic').checked) activeFormats.push('arabic');
+            if (document.getElementById('fmt-thai-digit').checked) activeFormats.push('thai_digit');
+            if (document.getElementById('fmt-thai-word').checked) activeFormats.push('thai_word');
+            if (document.getElementById('fmt-en-word').checked) activeFormats.push('english_word');
+
+            if (activeFormats.length === 0) {
+                alert('กรุณาเลือกอย่างน้อย 1 ภาษาหรือประเภทตัวเลขครับ');
+                document.getElementById('fmt-arabic').checked = true;
+                activeFormats.push('arabic');
+            }
+
+            const activeOrientations = [];
+            if (document.getElementById('ori-normal').checked) activeOrientations.push('normal');
+            if (document.getElementById('ori-upside-down').checked) activeOrientations.push('upside_down');
+            if (document.getElementById('ori-mirror').checked) activeOrientations.push('mirror');
+            if (document.getElementById('ori-vertical').checked) activeOrientations.push('vertical');
+            
+            const allowTilt = document.getElementById('ori-tilt').checked;
+
+            if (activeOrientations.length === 0) {
+                activeOrientations.push('normal');
+                document.getElementById('ori-normal').checked = true;
+            }
+
+            const activeCases = [];
+            if (document.getElementById('case-upper').checked) activeCases.push('upper');
+            if (document.getElementById('case-lower').checked) activeCases.push('lower');
+            if (activeCases.length === 0) activeCases.push('upper');
+
+            boardData = [];
+            const cols = 10;
+            const rows = 10;
+
+            const numbers = Array.from({ length: 100 }, (_, i) => i + 1);
+            numbers.sort(() => Math.random() - 0.5);
+
+            const palette = isDarkMode ? textColorsDark : textColorsLight;
+
+            for (let idx = 0; idx < 100; idx++) {
+                const num = numbers[idx];
+                const fmt = activeFormats[Math.floor(Math.random() * activeFormats.length)];
+
+                let textStr = '';
+                if (fmt === 'arabic') textStr = num.toString();
+                else if (fmt === 'thai_digit') textStr = toThaiDigit(num);
+                else if (fmt === 'thai_word') textStr = toThaiWord(num);
+                else textStr = toEnglishWord(num);
+
+                if (fmt === 'english_word') {
+                    const cStyle = activeCases[Math.floor(Math.random() * activeCases.length)];
+                    if (cStyle === 'upper') textStr = textStr.toUpperCase();
+                    else textStr = textStr.toLowerCase();
+                }
+
+                const ori = activeOrientations[Math.floor(Math.random() * activeOrientations.length)];
+                let transformParts = [];
+
+                if (ori === 'upside_down') {
+                    transformParts.push('rotate(180deg)');
+                } else if (ori === 'mirror') {
+                    transformParts.push('scaleX(-1)');
+                }
+
+                let writingModeCss = '';
+                if (ori === 'vertical') {
+                    writingModeCss = 'writing-mode: vertical-rl; text-orientation: upright;';
+                }
+
+                if (allowTilt) {
+                    const randomAngle = (Math.random() * 28 - 14).toFixed(1);
+                    transformParts.push(`rotate(${randomAngle}deg)`);
+                }
+
+                const fontColor = palette[Math.floor(Math.random() * palette.length)];
+                const fontSize = fontSizes[Math.floor(Math.random() * fontSizes.length)];
+                const fontWeight = fontWeights[Math.floor(Math.random() * fontWeights.length)];
+
+                const colIdx = idx % cols;
+                const rowIdx = Math.floor(idx / cols);
+
+                const baseLeft = (colIdx / cols) * 90 + 3;
+                const baseTop = (rowIdx / rows) * 88 + 4;
+
+                const jitterLeft = (Math.random() * 5 - 2.5);
+                const jitterTop = (Math.random() * 5 - 2.5);
+
+                const finalLeft = Math.max(2, Math.min(92, baseLeft + jitterLeft));
+                const finalTop = Math.max(3, Math.min(90, baseTop + jitterTop));
+
+                boardData.push({
+                    id: num,
+                    text: textStr,
+                    left: `${finalLeft}%`,
+                    top: `${finalTop}%`,
+                    color: fontColor,
+                    fontSize: fontSize,
+                    fontWeight: fontWeight,
+                    transformStr: transformParts.join(' '),
+                    writingModeCss: writingModeCss,
+                    isCrossed: false
+                });
+            }
+
+            updateCounter();
+        }
+
+        const scatterArea = document.getElementById('scatter-area');
+
+        function renderScatterBoard() {
+            scatterArea.innerHTML = '';
+
+            boardData.forEach((item) => {
+                const el = document.createElement('div');
+                el.className = `scatter-item ${item.isCrossed ? 'crossed-out' : ''}`;
+                
+                el.style.cssText = `
+                    left: ${item.left};
+                    top: ${item.top};
+                    color: ${item.color};
+                    font-size: ${item.fontSize};
+                    font-weight: ${item.fontWeight};
+                    transform: ${item.transformStr};
+                    ${item.writingModeCss}
+                `;
+
+                el.innerText = item.text;
+
+                // Event handling supporting both touch taps and clicks seamlessly on iPads
+                const handleInteraction = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    item.isCrossed = !item.isCrossed;
+                    if (item.isCrossed) {
+                        el.classList.add('crossed-out');
+                    } else {
+                        el.classList.remove('crossed-out');
+                    }
+                    updateCounter();
+                };
+
+                el.addEventListener('touchend', handleInteraction);
+                el.addEventListener('click', handleInteraction);
+
+                scatterArea.appendChild(el);
+            });
+        }
+
+        // --- Theme Toggle Logic ---
+        const themeBtn = document.getElementById('theme-toggle-btn');
+        const themeIcon = document.getElementById('theme-icon');
+
+        themeBtn.addEventListener('click', () => {
+            isDarkMode = !isDarkMode;
+            if (isDarkMode) {
+                document.documentElement.classList.add('dark');
+                themeIcon.textContent = '☀️';
+            } else {
+                document.documentElement.classList.remove('dark');
+                themeIcon.textContent = '🌙';
+            }
+            generateScatterData();
+            renderScatterBoard();
+        });
+
+        // --- Fullscreen / iPad View Mode ---
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        const exitFullscreenBtn = document.getElementById('exit-fullscreen-btn');
+        const mainHeader = document.getElementById('main-header');
+
+        function enterPresentationMode() {
+            mainHeader.classList.add('hidden');
+            exitFullscreenBtn.classList.remove('hidden');
+            if (document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            }
+        }
+
+        function exitPresentationMode() {
+            mainHeader.classList.remove('hidden');
+            exitFullscreenBtn.classList.add('hidden');
+            if (document.fullscreenElement && document.exitFullscreen) {
+                document.exitFullscreen().catch(() => {});
+            }
+        }
+
+        fullscreenBtn.addEventListener('click', enterPresentationMode);
+        exitFullscreenBtn.addEventListener('click', exitPresentationMode);
+
+        // --- Export Modal & HTML Download Handlers ---
+        const exportOpenBtn = document.getElementById('export-open-btn');
+        const exportModal = document.getElementById('export-modal');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        const iframeCode = document.getElementById('iframe-code');
+        const copyIframeBtn = document.getElementById('copy-iframe-btn');
+        const downloadHtmlBtn = document.getElementById('download-html-btn');
+
+        exportOpenBtn.addEventListener('click', () => {
+            // Generate embed iframe snippet
+            const currentUrl = window.location.href;
+            iframeCode.value = `<iframe src="${currentUrl}" width="100%" height="750" style="border:none; border-radius:16px; overflow:hidden;" allowfullscreen></iframe>`;
+            exportModal.classList.remove('hidden');
+        });
+
+        closeModalBtn.addEventListener('click', () => {
+            exportModal.classList.add('hidden');
+        });
+
+        exportModal.addEventListener('click', (e) => {
+            if (e.target === exportModal) exportModal.classList.add('hidden');
+        });
+
+        copyIframeBtn.addEventListener('click', () => {
+            iframeCode.select();
+            document.execCommand('copy');
+            copyIframeBtn.textContent = '✓ คัดลอกแล้ว!';
+            setTimeout(() => { copyIframeBtn.textContent = 'คัดลอกโค้ด'; }, 2000);
+        });
+
+        downloadHtmlBtn.addEventListener('click', () => {
+            const htmlContent = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+            const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'Free-Scatter-Board-1-100.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+
+        // Board Regeneration Listeners
+        document.getElementById('generate-board-btn').addEventListener('click', () => {
+            generateScatterData();
+            renderScatterBoard();
+        });
+
+        document.getElementById('reset-crosses-btn').addEventListener('click', () => {
+            boardData.forEach(item => item.isCrossed = false);
+            renderScatterBoard();
+            updateCounter();
+        });
+
+        // Drawer Control Toggle
+        const controlPanel = document.getElementById('control-panel');
+        const toggleBtn = document.getElementById('toggle-panel-btn');
+        let isPanelVisible = true;
+
+        toggleBtn.addEventListener('click', () => {
+            isPanelVisible = !isPanelVisible;
+            if (isPanelVisible) {
+                controlPanel.classList.remove('hidden');
+            } else {
+                controlPanel.classList.add('hidden');
+            }
+        });
+
+        // Initial Setup
+        window.onload = function() {
+            generateScatterData();
+            renderScatterBoard();
+        };
+    </script>
+</body>
+</html>
